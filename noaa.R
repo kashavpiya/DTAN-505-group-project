@@ -1,33 +1,27 @@
-# DTAN-505 6.4 Group Project (Group 5)
-# Charts 1 to 3 from NOAA Climate at a Glance data.
+# DTAN-505 Group Project: all six charts from NOAA Climate at a Glance data.
 #
-# Before running, check that `proj` below points to the project folder.
-# Any missing packages are installed automatically the first time.
-# Charts are saved to output/charts as PNG files (300 dpi, ready for Word).
+#   Chart 1: Global temperature trend, 1850 to 2025
+#   Chart 2: Land vs ocean warming, 1850 to 2025
+#   Chart 3: Northern vs Southern Hemisphere, 1850 to 2025
+#   Chart 4: Warming rate by continent since 1980 (ranked horizontal bar)
+#   Chart 5: Northern Hemisphere land, month by year since 1950 (heatmap)
+#   Chart 6: Change by region, 1850-1900 vs 2016-2025 (slopegraph)
 #
-# Design follows Storytelling With Data (Knaflic):
-#   - Line graphs for continuous yearly data. No zero-baseline rule for lines.
-#   - Clutter removed: no chart border, no gridlines, no data markers,
-#     no legend. Axis labels kept light gray.
-#   - Data labeled directly, with the label in the same color as its line.
-#   - Color used sparingly: one red for the point of the chart, gray for
-#     everything else, and the same red in all three charts.
-#   - Text is your friend: a title that states the takeaway, axis titles,
-#     and short annotations on the key numbers.
-#   - Titles and axis titles aligned to the left edge.
+# Before running, set `proj` to the project folder (the one that contains data/).
+# Missing packages are installed automatically. Charts are saved to output/charts
+# as 300 dpi PNGs. Style follows Storytelling With Data (Knaflic).
 
-# ---- Install and load packages ---------------------------------------------
+# ---- Packages and paths -----------------------------------------------------
 
 packages <- c("ggplot2", "dplyr", "tidyr", "readr", "scales")
 missing  <- packages[!packages %in% rownames(installed.packages())]
-if (length(missing) > 0) {
-  install.packages(missing, repos = "https://cloud.r-project.org")
-}
+if (length(missing) > 0) install.packages(missing, repos = "https://cloud.r-project.org")
 invisible(lapply(packages, library, character.only = TRUE))
 
-proj <- "~/Documents/DTAN-505 6.4 Group Project"
+proj <- Sys.getenv("PROJ", unset = "~/Documents/DTAN-505 6.4 Group Project")
 
-annual <- read_csv(file.path(proj, "data/noaa_annual_anomalies_1850_2025.csv"), show_col_types = FALSE)
+annual  <- read_csv(file.path(proj, "data/noaa_annual_anomalies_1850_2025.csv"),  show_col_types = FALSE)
+monthly <- read_csv(file.path(proj, "data/noaa_monthly_anomalies_1850_2026.csv"), show_col_types = FALSE)
 
 chart_dir <- file.path(proj, "output/charts")
 dir.create(chart_dir, recursive = TRUE, showWarnings = FALSE)
@@ -35,13 +29,12 @@ dir.create(chart_dir, recursive = TRUE, showWarnings = FALSE)
 
 # ---- Shared style -----------------------------------------------------------
 
-red        <- "#c0392b"   # the one highlight color, used for the story
-gray_line  <- "#a6a6a6"   # context lines
-gray_text  <- "#7f7f7f"   # axis labels, notes, context labels
-gray_axis  <- "#bfbfbf"   # axis lines and the reference line
-dark_text  <- "#404040"   # titles
-
-deg <- "°C"
+red        <- "#c0392b"
+gray_line  <- "#a6a6a6"
+gray_text  <- "#7f7f7f"
+gray_axis  <- "#bfbfbf"
+dark_text  <- "#404040"
+deg        <- "°C"
 
 theme_swd <- function() {
   theme_classic(base_size = 11) +
@@ -57,8 +50,8 @@ theme_swd <- function() {
       axis.ticks            = element_line(colour = gray_axis, linewidth = 0.4),
       axis.text             = element_text(colour = gray_text, size = 9),
       axis.title            = element_text(colour = gray_text, size = 9),
-      axis.title.y          = element_text(hjust = 1, margin = margin(r = 8)),   # top of the axis
-      axis.title.x          = element_text(hjust = 0, margin = margin(t = 8)),   # left of the axis
+      axis.title.x          = element_text(hjust = 0, margin = margin(t = 8)),
+      axis.title.y          = element_text(hjust = 1, margin = margin(r = 8)),
       legend.position       = "none",
       plot.margin           = margin(14, 20, 10, 14)
     )
@@ -70,15 +63,12 @@ save_chart <- function(plot, file, width = 8, height = 4.8) {
   ggsave(file.path(chart_dir, file), plot, width = width, height = height, dpi = 300, bg = "white")
 }
 
-# Warming rate in degrees C per decade, from a straight-line fit
+# Warming rate in degrees C per decade from a straight-line fit
 trend_per_decade <- function(years, values) {
   unname(coef(lm(values ~ years))[2]) * 10
 }
 
-recent <- filter(annual, year >= 1980)
-
-# Gray reference line at zero, labeled like the "GOAL" line in the book
-# The label sits at the right end, below the line, where no data crosses it.
+# Gray baseline at zero, labeled on the right
 baseline_layers <- function() {
   list(
     geom_hline(yintercept = 0, colour = gray_axis, linewidth = 0.5),
@@ -92,6 +82,20 @@ x_axis <- function(right_pad) {
                      expand = expansion(mult = c(0.01, right_pad)))
 }
 
+# Wrap long titles so they never run off the chart
+wrap <- function(x, width = 60) paste(strwrap(x, width), collapse = "\n")
+
+recent <- filter(annual, year >= 1980)
+
+continents <- c(
+  africa_land        = "Africa",
+  asia_land          = "Asia",
+  europe_land        = "Europe",
+  north_america_land = "North America",
+  south_america_land = "South America",
+  oceania_land       = "Oceania"
+)
+
 
 # ---- Chart 1: Global temperature, 1850 to 2025 -----------------------------
 
@@ -102,12 +106,10 @@ c1 <- ggplot(annual, aes(year, globe_land_ocean)) +
   baseline_layers() +
   geom_line(data = filter(annual, year <= 2015), colour = gray_line, linewidth = 0.6) +
   geom_line(data = filter(annual, year >= 2015), colour = red, linewidth = 1.3) +
-  # Last year below average, in gray because it is context
   geom_point(data = last_cold, colour = gray_text, size = 1.8) +
   annotate("text", x = last_cold$year, y = last_cold$globe_land_ocean - 0.1,
            label = paste0(last_cold$year, ": last year\nbelow average"),
            size = 2.8, colour = gray_text, lineheight = 0.9) +
-  # The record year, in red because it is the point
   geom_point(data = record, colour = red, size = 2.6) +
   annotate("text", x = record$year - 2.5, y = record$globe_land_ocean + 0.02, hjust = 1,
            label = paste0(record$year, ": +", record$globe_land_ocean, " ", deg),
@@ -187,5 +189,145 @@ c3 <- ggplot(annual, aes(year)) +
   theme_swd()
 
 save_chart(c3, "chart3_north_vs_south.png")
+
+
+# ---- Chart 4: Warming rate by continent since 1980 --------------------------
+# Rate = slope of a straight-line fit, 1980 to 2025, in degrees C per decade.
+
+rate <- function(x) unname(coef(lm(x ~ recent$year))[2]) * 10
+
+rates <- tibble(col = names(continents), region = unname(continents)) |>
+  mutate(rate = sapply(col, function(cn) rate(recent[[cn]]))) |>
+  arrange(rate) |>
+  mutate(region = factor(region, levels = region),
+         highlight = rank(-rate) <= 2)
+
+globe_rate <- rate(recent$globe_land)
+
+c4 <- ggplot(rates, aes(rate, region, fill = highlight)) +
+  geom_col(width = 0.65) +
+  geom_text(aes(label = sprintf("%.2f", rate)),
+            hjust = 1.2, size = 3.8, fontface = "bold", colour = "white") +
+  annotate("segment", x = globe_rate, xend = globe_rate, y = 0.4, yend = 6.55,
+           colour = dark_text, linewidth = 0.5, linetype = "dashed") +
+  annotate("text", x = globe_rate, y = 6.62, hjust = 0.5, vjust = 0, size = 3,
+           colour = dark_text, label = sprintf("Global land average: %.2f", globe_rate)) +
+  scale_fill_manual(values = c(`TRUE` = red, `FALSE` = gray_line)) +
+  scale_y_discrete(expand = expansion(add = c(0.6, 0.9))) +
+  scale_x_continuous(expand = expansion(mult = c(0, 0.04)), breaks = seq(0, 0.4, 0.1)) +
+  coord_cartesian(clip = "off") +
+  labs(title = wrap(sprintf("Europe (%.2f) and Asia (%.2f) are warming fastest; Oceania slowest (%.2f)",
+                            rates$rate[rates$region == "Europe"],
+                            rates$rate[rates$region == "Asia"],
+                            rates$rate[rates$region == "Oceania"]), 58),
+       subtitle = "Warming rate of land temperature by continent, 1980 to 2025",
+       x = paste0("Warming rate (", deg, " per decade)"), y = NULL,
+       caption = source_note) +
+  theme_swd() +
+  theme(axis.line.y = element_blank(), axis.ticks.y = element_blank(),
+        axis.text.y = element_text(colour = dark_text, size = 10))
+
+save_chart(c4, "chart4_continent_warming_rate.png")
+
+
+# ---- Chart 5: Heatmap, month by year, Northern Hemisphere land --------------
+
+heat <- monthly |>
+  filter(year >= 1950) |>
+  mutate(month_lab = factor(month.abb[month], levels = rev(month.abb)))
+
+c5 <- ggplot(heat, aes(year, month_lab, fill = nhem_land)) +
+  geom_tile() +
+  scale_fill_gradient2(
+    low = "#2c6fbb", mid = "white", high = red, midpoint = 0,
+    limits = c(-3, 3), oob = squish,
+    breaks = c(-2, -1, 0, 1, 2, 3),
+    labels = function(x) ifelse(x > 0, paste0("+", x), x),
+    name = paste0("Difference from 20th century average (", deg, ")")
+  ) +
+  scale_x_continuous(breaks = seq(1950, 2020, 10), expand = c(0, 0)) +
+  scale_y_discrete(expand = c(0, 0)) +
+  labs(title = "Since the 1990s, nearly every month on northern land has run warm",
+       subtitle = "Northern Hemisphere land temperature by month, 1950 to August 2026. 98% of months since 1990 were above average.",
+       x = NULL, y = NULL, caption = source_note) +
+  theme_swd() +
+  theme(
+    axis.line = element_blank(), axis.ticks = element_blank(),
+    legend.position = "bottom",
+    legend.title = element_text(colour = gray_text, size = 9, vjust = 0.85),
+    legend.text  = element_text(colour = gray_text, size = 8),
+    legend.key.width  = unit(1.6, "cm"),
+    legend.key.height = unit(0.3, "cm")
+  )
+
+save_chart(c5, "chart5_nhem_land_heatmap.png", width = 9, height = 5.4)
+
+
+# ---- Chart 6: Slopegraph, 1850-1900 vs 2016-2025 ----------------------------
+
+regions <- c(continents, arctic_land_ocean = "Arctic")
+
+mean_period <- function(y0, y1) {
+  annual |> filter(year >= y0, year <= y1) |> summarise(across(all_of(names(regions)), mean))
+}
+
+slope <- bind_rows(
+  mean_period(1850, 1900) |> mutate(period = "1850 to 1900"),
+  mean_period(2016, 2025) |> mutate(period = "2016 to 2025")
+) |>
+  pivot_longer(-period, names_to = "col", values_to = "value") |>
+  mutate(region = unname(regions[col]),
+         x = ifelse(period == "1850 to 1900", 1, 2))
+
+change <- slope |>
+  select(region, period, value) |>
+  pivot_wider(names_from = period, values_from = value) |>
+  mutate(change = `2016 to 2025` - `1850 to 1900`,
+         highlight = rank(-change) <= 3) |>
+  arrange(desc(change))
+
+slope <- left_join(slope, select(change, region, change, highlight), by = "region")
+
+spread_labels <- function(y, min_gap = 0.14) {
+  o <- order(y); ys <- y[o]
+  for (i in seq_along(ys)[-1]) if (ys[i] - ys[i - 1] < min_gap) ys[i] <- ys[i - 1] + min_gap
+  ys <- ys - (mean(ys) - mean(y[o]))
+  ys[order(o)]
+}
+
+left  <- slope |> filter(x == 1) |> mutate(label_y = spread_labels(value))
+right <- slope |> filter(x == 2) |> mutate(label_y = spread_labels(value))
+text_col <- function(h) ifelse(h, red, gray_text)
+
+c6 <- ggplot(slope, aes(x, value, group = region)) +
+  geom_line(aes(colour = highlight, linewidth = highlight)) +
+  geom_point(aes(colour = highlight, size = highlight)) +
+  geom_segment(data = left,  aes(x = 0.97, xend = 0.94, y = value, yend = label_y),
+               linewidth = 0.3, colour = gray_axis) +
+  geom_segment(data = right, aes(x = 2.03, xend = 2.06, y = value, yend = label_y),
+               linewidth = 0.3, colour = gray_axis) +
+  geom_text(data = left,  aes(x = 0.93, y = label_y, colour = NULL,
+                              label = sprintf("%s  %+.2f", region, value)),
+            hjust = 1, size = 3.3, colour = text_col(left$highlight)) +
+  geom_text(data = right, aes(x = 2.07, y = label_y, colour = NULL,
+                              label = sprintf("%+.2f  %s  (%+.2f)", value, region, change)),
+            hjust = 0, size = 3.3, colour = text_col(right$highlight)) +
+  scale_colour_manual(values = c(`TRUE` = red, `FALSE` = gray_line)) +
+  scale_linewidth_manual(values = c(`TRUE` = 1.2, `FALSE` = 0.6)) +
+  scale_size_manual(values = c(`TRUE` = 2.4, `FALSE` = 1.6)) +
+  scale_x_continuous(limits = c(0.1, 2.9), breaks = c(1, 2),
+                     labels = c("1850 to 1900", "2016 to 2025"), position = "top") +
+  labs(title = sprintf("The Arctic (%+.2f), Asia (%+.2f), and Europe (%+.2f) have moved the furthest",
+                       change$change[change$region == "Arctic"],
+                       change$change[change$region == "Asia"],
+                       change$change[change$region == "Europe"]),
+       subtitle = paste0("Average temperature compared with the 20th century average (", deg,
+                         "). Change between the two periods in parentheses."),
+       caption = source_note, x = NULL, y = NULL) +
+  theme_swd() +
+  theme(axis.line = element_blank(), axis.ticks = element_blank(), axis.text.y = element_blank(),
+        axis.text.x = element_text(colour = dark_text, size = 10, face = "bold"))
+
+save_chart(c6, "chart6_change_slopegraph.png", width = 9, height = 6.2)
 
 cat("Charts saved to:", normalizePath(chart_dir), "\n")
